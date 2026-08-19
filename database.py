@@ -4,6 +4,28 @@ from pathlib import Path
 
 DATABASE_PATH = Path("data/tekmetric.db")
 
+# --------------------------------------------------
+# Defines Users Table
+#--------------------------------------------------
+
+
+def create_users_table():
+    conn = get_connection()
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'admin',
+            active INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    conn.commit()
+    conn.close()
+
 
 def get_connection():
     """Return a connection to the local database."""

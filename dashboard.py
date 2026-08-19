@@ -111,7 +111,7 @@ LOGIN_HTML = r"""
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
-<title>Complete Auto Analytics - Login</title>
+<title>Complete Auto Repair - Analytics Platform - Login</title>
 
 <style>
 
@@ -195,7 +195,7 @@ button {
 
 <div class="login-box">
 
-<h1>Complete Auto Analytics</h1>
+<h1>Complete Auto Repair - Analytics Platform</h1>
 
 <form method="POST" action="/login">
 
@@ -1544,9 +1544,61 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
 
-        if parsed.path == "/":
-            self._send(HTML)
+        user = self._current_user()
+
+        if parsed.path == "/login":
+
+            if user:
+                self._redirect("/")
+                return
+
+            self._send(LOGIN_HTML.replace("{error}", ""))
             return
+
+        if parsed.path == "/logout":
+
+            cookie = self.headers.get("Cookie", "")
+
+            for item in cookie.split(";"):
+                item = item.strip()
+
+                if item.startswith("session_token="):
+                    token = item.split("=", 1)[1]
+                    destroy_session(token)
+                    break
+
+            self.send_response(302)
+            self.send_header("Location", "/login")
+            self.send_header(
+                "Set-Cookie",
+                "session_token=; Max-Age=0; Path=/",
+            )
+            self.end_headers()
+            return
+
+        if not user:
+            self._redirect("/login")
+            return
+
+        if parsed.path == "/":
+
+          if not user:
+            self._redirect("/login")
+          return
+
+          self._send(HTML)
+
+          return
+
+        if parsed.path.startswith("/api/") and not user:
+
+          self._send(
+            json.dumps({"error": "Unauthorized"}),
+            "application/json; charset=utf-8",
+            401,
+          )
+
+          return
 
         if parsed.path == "/api/dashboard":
             try:
@@ -1619,20 +1671,133 @@ class Handler(BaseHTTPRequestHandler):
         self._send("Not Found", status=404)
 
     def do_POST(self):
-        parsed = urlparse(self.path)
+      parsed = urlparse(self.path)
 
-        if parsed.path == "/api/sync":
-            started = _run_sync_in_background()
-            payload = {
-                "status": "started" if started else "already_running",
-            }
-            self._send(
-                json.dumps(payload),
-                "application/json; charset=utf-8",
+      # --------------------------------------------------
+      # Login
+      # --------------------------------------------------
+
+      if parsed.path == "/login":
+
+          content_length = int(
+              self.headers.get(
+                  "Content-Length",
+                  0,
+              )
+          )
+
+          body = self.rfile.read(
+              content_length
+          ).decode(
+              "utf-8"
+          )
+
+          form = parse_qs(body)
+
+          username = form.get(
+              "username",
+              [""]
+          )[0]
+
+          password = form.get(
+              "password",
+              [""]
+          )[0]
+
+          if authenticate(
+              username,
+              password,
+          ):
+
+            token = create_session(
+                username
             )
+
+            self.send_response(
+                302
+            )
+
+            self.send_header(
+                "Location",
+                "/",
+            )
+
+            self.send_header(
+                "Set-Cookie",
+                (
+                    f"session_token={token}; "
+                    "Max-Age=2592000; "
+                    "Path=/"
+                ),
+            )
+
+            self.end_headers()
+
             return
 
-        self._send("Not Found", status=404)
+          self._send(
+              LOGIN_HTML.replace(
+                  "{error}",
+                  (
+                      '<div class="error">'
+                      "Invalid username or password."
+                      "</div>"
+                  ),
+              ),
+            )
+
+          return
+
+      # --------------------------------------------------
+      # Sync
+      # --------------------------------------------------
+
+      user = self._current_user()
+
+      if (
+          parsed.path.startswith("/api/")
+          and not user
+      ):
+
+          self._send(
+              json.dumps(
+                  {
+                      "error": "Unauthorized"
+                  }
+              ),
+              "application/json; charset=utf-8",
+              401,
+          )
+
+          return
+
+      if parsed.path == "/api/sync":
+
+          started = (
+              _run_sync_in_background()
+          )
+
+          payload = {
+              "status": (
+                  "started"
+                  if started
+                  else "already_running"
+              )
+          }
+
+          self._send(
+              json.dumps(
+                  payload
+              ),
+              "application/json; charset=utf-8",
+          )
+
+          return
+
+      self._send(
+          "Not Found",
+          status=404,
+      )
 
     def log_message(self, format, *args):
         print(f"[Dashboard] {args[0]}")

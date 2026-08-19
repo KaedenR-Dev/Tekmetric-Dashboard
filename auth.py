@@ -81,7 +81,11 @@ def get_user(username):
     return user
 
 def create_session(username):
+    print(f"Creating session for: {username}")
+
     user = get_user(username)
+
+    print(f"User found: {user}")
 
     if not user:
         return None
@@ -112,6 +116,8 @@ def create_session(username):
 
     conn.commit()
     conn.close()
+
+    print("Session created.")
 
     return token
 

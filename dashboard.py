@@ -13,6 +13,10 @@ import json
 import threading
 import time
 import traceback
+from auth import authenticate
+from auth import create_session
+from auth import destroy_session
+from auth import validate_session
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -99,6 +103,131 @@ def _auto_sync_loop():
         _run_sync_in_background()
         time.sleep(AUTO_SYNC_INTERVAL_MINUTES * 60)
 
+
+LOGIN_HTML = r"""
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Complete Auto Analytics - Login</title>
+
+<style>
+
+body {
+    margin: 0;
+    height: 100vh;
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    background: #0b1016;
+
+    font-family: Inter, Arial, sans-serif;
+}
+
+.login-box {
+    width: 360px;
+
+    padding: 40px;
+
+    background: #121922;
+
+    border: 1px solid #263342;
+
+    border-radius: 12px;
+}
+
+h1 {
+    margin-top: 0;
+
+    color: white;
+
+    text-align: center;
+}
+
+input {
+    width: 100%;
+
+    margin-top: 12px;
+
+    padding: 12px;
+
+    box-sizing: border-box;
+
+    border: 1px solid #263342;
+
+    border-radius: 8px;
+
+    background: #17212c;
+
+    color: white;
+}
+
+button {
+    width: 100%;
+
+    margin-top: 16px;
+
+    padding: 12px;
+
+    border: none;
+
+    border-radius: 8px;
+
+    cursor: pointer;
+}
+
+.error {
+    color: #ff6b6b;
+
+    margin-top: 12px;
+
+    text-align: center;
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="login-box">
+
+<h1>Complete Auto Analytics</h1>
+
+<form method="POST" action="/login">
+
+<input
+    type="text"
+    name="username"
+    placeholder="Username"
+    required
+>
+
+<input
+    type="password"
+    name="password"
+    placeholder="Password"
+    required
+>
+
+<button type="submit">
+
+    Sign In
+
+</button>
+
+</form>
+
+{error}
+
+</div>
+
+</body>
+</html>
+"""
 
 
 HTML = r"""
@@ -1373,6 +1502,33 @@ def api_response(days, basis):
 
 
 class Handler(BaseHTTPRequestHandler):
+
+
+    def _redirect(self, location):
+
+      self.send_response(302)
+
+      self.send_header(
+        "Location",
+        location,
+      )
+
+      self.end_headers()
+
+    def _current_user(self):
+      cookie = self.headers.get("Cookie", "")
+
+      for item in cookie.split(";"):
+
+        item = item.strip()
+
+        if item.startswith("session_token="):
+
+            token = item.split("=", 1)[1]
+
+            return validate_session(token)
+
+      return None
 
     def _send(self, body, content_type="text/html; charset=utf-8", status=200):
         if isinstance(body, str):

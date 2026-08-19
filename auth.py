@@ -1,3 +1,8 @@
+
+import secrets
+
+from datetime import datetime, timedelta
+
 from functools import wraps
 
 from flask import redirect
@@ -57,6 +62,97 @@ def authenticate(username, password):
         password,
     )
 
+def get_user(username):
+
+    conn = get_connection()
+
+    user = conn.execute(
+        """
+        SELECT *
+        FROM users
+        WHERE username = ?
+        AND active = 1
+        """,
+        (username,),
+    ).fetchone()
+
+    conn.close()
+
+    return user
+
+def create_session(username):
+    user = get_user(username)
+
+    if not user:
+        return None
+
+    token = secrets.token_urlsafe(32)
+
+    expires_at = (
+        datetime.now() + timedelta(days=30)
+    ).isoformat()
+
+    conn = get_connection()
+
+    conn.execute(
+        """
+        INSERT INTO sessions (
+            session_token,
+            user_id,
+            expires_at
+        )
+        VALUES (?, ?, ?)
+        """,
+        (
+            token,
+            user["id"],
+            expires_at,
+        ),
+    )
+
+    conn.commit()
+    conn.close()
+
+    return token
+
+def validate_session(token):
+    conn = get_connection()
+
+    session = conn.execute(
+        """
+        SELECT users.*
+        FROM sessions
+
+        JOIN users
+            ON users.id = sessions.user_id
+
+        WHERE session_token = ?
+        AND active = 1
+        AND expires_at > ?
+        """,
+        (
+            token,
+            datetime.now().isoformat(),
+        ),
+    ).fetchone()
+
+    conn.close()
+
+    return session
+
+def destroy_session(token):
+    conn = get_connection()
+
+    conn.execute(
+        """
+        DELETE FROM sessions
+        WHERE session_token = ?
+        """,
+        (token,),
+    )
+
+    conn.commit()
+    conn.close()
 
 def login_required(view):
     @wraps(view)
